@@ -62,10 +62,7 @@ def generate_schedule(month_year: str,
 
                 # Check if any employees are available and prefer this shift
                 for employee in employees:
-                    if date_str not in employee_availability.get(employee, []) and \
-                            (current_shift[employee] == shift_index or current_shift[employee] == -1) and \
-                            shift_index in employee_shiftpreference.get(employee, [0, 1, 2]) and \
-                            weekly_hours[employee] + HOURS_PER_SHIFT <= max_hours_ per_worker per week:
+                    if date_str not in employee_availability.get(employee, []) and (current_shift[employee] == shift_index or current_shift[employee] == -1) and shift_index in employee_shiftpreference.get(employee, [0, 1, 2]) and weekly_hours[employee] + HOURS_PER_SHIFT <= max_hours_ per_worker per week:
                         schedule[date_str][shift_index].append(employee)
                         weekly_hours[employee] += HOURS_PER_SHIFT
 
