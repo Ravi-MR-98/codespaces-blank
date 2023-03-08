@@ -1,174 +1,119 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
-import xlsxwriter
+import pandas as pd
 
-def schedule(month_year: str,
-             employees: list,
-             max_hours_per_day: int,
-             max_hours_per_week: int,
-             max_shifts_per_day: int,
-             rest_time_between_shifts: int,
-             rest_days_per_week: int,
-             employee_availability: dict,
-             employee_shift_preference: dict):
-    # parse month and year
-    month_year = datetime.strptime(month_year, '%m/%Y')
-    days_in_month = (month_year.replace(month=month_year.month % 12 + 1) - timedelta(days=1)).day
+# Inputs
+month_year = '03/2023'
+employees = ['Alice', 'Bob', 'Charlie', 'Dave']
+max_hours_per_day = 8
+max_hours_per_week = 40
+max_shifts_per_day = 1
+rest_time_between_shifts = 12
+rest_days_per_week = 1
+employee_availability = {'Alice': ['03/05/2023', '03/06/2023'], 'Bob': [], 'Charlie': ['03/10/2023'], 'Dave': []}
+employee_shift_preference = {'Alice': [0, 1], 'Bob': [0, 2], 'Charlie': [1], 'Dave': [0, 1, 2]}
 
-    # initialize schedule
+# Constants
+SHIFT_TIMES = [(8, 16), (16, 24), (0, 8)]
+HOURS_PER_SHIFT = 8
+
+
+def generate_schedule(month_year: str,
+                      employees: list,
+                      max_hours_per_day: int,
+                      max_hours_per_week: int,
+                      max_shifts_per_day: int,
+                      rest_time_between_shifts: int,
+                      rest_days_per_week: int,
+                      employee_availability: dict,
+                      employee_shift_preference: dict):
+    # Convert month_year to datetime object and get number of days in month
+    month_year_dt = datetime.strptime(month_year + '/01', '%m/%Y/%d')
+    days_in_month = (month_year_dt.replace(month=month_year_dt.month % 12 + 1) - timedelta(days=1)).day
+
+    # Initialize schedule and weekly hours for each employee
     schedule = defaultdict(lambda: defaultdict(list))
+    weekly_hours = defaultdict(int)
 
-    # initialize last shift worked
-    last_shift = defaultdict(str)
-    last_rest_day = defaultdict(lambda: month_year.replace(day=1) - timedelta(days=1))
+    # Initialize current shift for each employee
+    current_shift = defaultdict(lambda: -1)
 
-    # initialize employee availability
-    for employee in employees:
-        if employee not in employee_availability:
-            employee_availability[employee] = []
-
-    # initialize employee shift preference
-    for employee in employees:
-        if employee not in employee_shift_preference:
-            employee_shift_preference[employee] = []
-
-    # initialize hours worked per week
-    hours_worked_per_week = defaultdict(int)
-
-    # iterate over days in month
+    # Iterate through each day in month
     for day in range(1, days_in_month + 1):
-        date = month_year.replace(day=day)
-        weekday = date.weekday()
+        date_str = f"{month_year}/{str(day).zfill(2)}"
+        date_dt = datetime.strptime(date_str, '%m/%Y/%d')
 
-        # reset hours worked per week on Monday
-        if weekday == 0:
-            hours_worked_per_week = defaultdict(int)
+        # Reset weekly hours if it's a new week
+        if date_dt.weekday() == 0:
+            weekly_hours = defaultdict(int)
 
-        # check if employees have reached maximum rest days per week
-        for employee in employees:
-            shifts_worked_this_week = sum(1 for d in range(max(1, day - weekday), day) if schedule[d][employee])
-            if shifts_worked_this_week == 7 - rest_days_per_week:
-                employee_availability[employee].append(date)
+        # Check if any employees need to switch shifts due to rest day
+        for employee, hours in weekly_hours.items():
+            if hours >= max_hours_per_week - rest_days_per_week * HOURS_PER_SHIFT:
+                current_shift[employee] = -1
 
-        # assign shifts to employees
-        for shift in ['08h-16h', '16h-00h', '00h-08h']:
-            required_workers = 2 if shift != '00h-08h' else 1
+        # Iterate through each shift
+        for shift_index, (start_hour, end_hour) in enumerate(SHIFT_TIMES):
+            workers_needed = 2 if shift_index != 2 else 1
 
-            available_employees = [e for e in employees if date not in employee_availability[e] and shift not in employee_shift_preference[e]]
+            # Assign workers to shift
+            for _ in range(workers_needed):
+                assigned = False
 
-            sorted_employees = sorted(available_employees, key=lambda e: hours_worked_per_week[e])
+                # Check if any employees are available and prefer this shift
+                for employee in employees:
+                    if date_str not in employee_availability.get(employee, []) and \
+                            (current_shift[employee] == shift_index or current_shift[employee] == -1) and \
+                            shift_index in employee_shiftpreference.get(employee, [0, 1, 2]) and \
+                            weekly_hours[employee] + HOURS_PER_SHIFT <= max_hours_ per_worker per week:
+                        schedule[date_str][shift_index].append(employee)
+                        weekly_hours[employee] += HOURS_PER_SHIFT
 
-            for i in range(required_workers):
-                worker_assigned_to_shift = False
+                        current_shift[employee] = shift_index
 
-                for worker_index, worker_name in enumerate(sorted_employees):
-                    worker_schedule = schedule[day][worker_name]
-                    worker_hours_today = sum([8 for shift_time_range_str in worker_schedule])
+                        assigned = True
 
-                    if len(worker_schedule) < max_shifts_per_day and worker_hours_today < max_hours_per_day and \
-                            hours_worked_per_week[worker_name] < max_hours_per_week:
-                        last_shift_end_time = None
-
-                        if len(worker_schedule) > 0:
-                            last_shift_end_time = datetime.strptime(worker_schedule[-1].split("-")[1], "%Hh")
-
-                        current_shift_start_time = datetime.strptime(shift.split("-")[0], "%Hh")
-
-                        enough_rest_between_shifts = True
-
-                        if last_shift_end_time != None and current_shift_start_time < last_shift_end_time:
-                            current_shift_start_time += timedelta(days=1)
-
-                        if last_shift_end_time != None and (
-                                current_shift_start_time - last_shift_end_time).seconds / 3600 < rest_time_between_shifts:
-                            enough_rest_between_shifts = False
-
-                        if enough_rest_between_shifts == True:
-                            # check if worker has taken a rest day since their last shift
-                            if last_shift[worker_name] != '' and last_shift[worker_name] != shift and date - \
-                                    last_rest_day[worker_name] > timedelta(days=1):
-                                continue
-
-                            schedule[day][worker_name].append(shift)
-                            hours_worked_per_week[worker_name] += 8
-                            last_shift[worker_name] = shift
-                            worker_assigned_to_shift = True
-
-                        if worker_assigned_to_shift == False:
-                            schedule[day]['(External)'].append(shift)
-
-                    sorted_employees.pop(worker_index)
-
-                    if worker_assigned_to_shift == True:
                         break
 
-        # update last rest day for workers that didn't work today
-        for employee in employees:
-            if not schedule[day][employee]:
-                last_rest_day[employee] = date
-            else:
-                # reset last rest day for workers that worked today
-                last_rest_day[employee] = month_year.replace(day=1) - timedelta(days=1)
+                # If no employees are available or prefer this shift,assign external worker
+                if not assigned:
+                    schedule[date_str][shift_index].append('(External)')
 
     return schedule
 
-def export_schedule_to_excel(schedule: dict, filename: str):
-    # create workbook and worksheet
-    workbook = xlsxwriter.Workbook(filename)
-    worksheet = workbook.add_worksheet()
 
-    # write headers
-    worksheet.write(0, 0, 'Day')
-    for i, shift in enumerate(['08h-16h', '16h-00h', '00h-08h']):
-        worksheet.write(0, i + 1, shift)
+schedule = generate_schedule(
+    month_year=month_year,
+    employees=employees,
+    max_hours_per_day=max_hours_per_day,
+    max_hours_per_week=max_hours_per_week,
+    max_shifts_per_day=max_shifts_per_day,
+    rest_time_between_shifts=rest_time_between_shifts,
+    rest_days_per_week=rest_days_per_week,
+    employee_availability=employee_availability,
+    employee_shift_preference=employee_shift_preference
+)
 
-    # write data
-    for row, day in enumerate(sorted(schedule.keys())):
-        worksheet.write(row + 1, 0, day)
-        for col, shift in enumerate(['08h-16h', '16h-00h', '00h-08h']):
-            employees = [e for e in schedule[day] if shift in schedule[day][e]]
-            worksheet.write(row + 1, col + 1, ', '.join(employees))
+for day, schedule_for_day in schedule.items():
+    print(f"{day}:")
 
-    # close workbook
-    workbook.close()
+    for shift_index, (start_hour, end_hour) in enumerate(SHIFT_TIMES):
+        start_time = f"{str(start_hour).zfill(2)}h"
+        end_time = f"{str(end_hour).zfill(2)}h" if end_hour != 24 else "00h"
 
-# example usage of function with sample data
+        print(f" {start_time}-{end_time}: {','.join(schedule_for_day[shift_index])}")
 
-month_year='03/2023'
-employees=['Alice','Bob','Charlie','Dave','John','Michael','Dilan']
-max_hours_per_day=8
-max_hours_per_week=40
-max_shifts_per_day=1
-rest_time_between_shifts=12
-rest_days_per_week=1
-employee_availability={'Alice':[datetime(2023,3,5),datetime(2023,3,6)],'Bob':[datetime(2023,3,7)]}
-employee_shift_preference={'Alice':['16h-00h', '00h-08h']}
+# Create a DataFrame from the schedule
+df = pd.DataFrame.from_dict(schedule, orient='index')
 
-result=schedule(month_year,
-             employees,
-             max_hours_per_day,
-             max_hours_per_week,
-             max_shifts_per_day,
-             rest_time_between_shifts,
-             rest_days_per_week,
-             employee_availability,
-             employee_shift_preference)
+# Rename columns
+df.columns = [f"{str(start_hour).zfill(2)}h-{str(end_hour).zfill(2)}h" if end_hour != 24 else "00h-00h" for start_hour, end_hour in SHIFT_TIMES]
 
-for day in result:
-    print(f"Day {day}:")
-    for employee in result[day]:
-        print(f"\t{employee}: {result[day][employee]}")
+# Fill NaN values with empty strings
+df.fillna('', inplace=True)
 
-# generate schedule
-result = schedule(month_year,
-                  employees,
-                  max_hours_per_day,
-                  max_hours_per_week,
-                  max_shifts_per_day,
-                  rest_time_between_shifts,
-                  rest_days_per_week,
-                  employee_availability,
-                  employee_shift_preference)
+# Combine workers in each cell into a single string separated by commas
+df = df.applymap(lambda x: ', '.join(x) if isinstance(x, list) else x)
 
-# export schedule to Excel file
-export_schedule_to_excel(result,'schedule.xlsx')
+# Export DataFrame to Excel file
+df.to_excel('schedule.xlsx')
