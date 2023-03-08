@@ -11,13 +11,16 @@ def schedule(month_year: str,
              rest_days_per_week: int,
              employee_availability: dict,
              employee_shift_preference: dict):
-
     # parse month and year
     month_year = datetime.strptime(month_year, '%m/%Y')
     days_in_month = (month_year.replace(month=month_year.month % 12 + 1) - timedelta(days=1)).day
 
     # initialize schedule
     schedule = defaultdict(lambda: defaultdict(list))
+
+    # initialize last shift worked
+    last_shift = defaultdict(str)
+    last_rest_day = defaultdict(lambda: month_year.replace(day=1) - timedelta(days=1))
 
     # initialize employee availability
     for employee in employees:
@@ -81,16 +84,31 @@ def schedule(month_year: str,
                             enough_rest_between_shifts = False
 
                         if enough_rest_between_shifts == True:
+                            # check if worker has taken a rest day since their last shift
+                            if last_shift[worker_name] != '' and last_shift[worker_name] != shift and date - \
+                                    last_rest_day[worker_name] > timedelta(days=1):
+                                continue
+
                             schedule[day][worker_name].append(shift)
                             hours_worked_per_week[worker_name] += 8
+                            last_shift[worker_name] = shift
                             worker_assigned_to_shift = True
+
+                        if worker_assigned_to_shift == False:
+                            schedule[day]['(External)'].append(shift)
 
                     sorted_employees.pop(worker_index)
 
                     if worker_assigned_to_shift == True:
                         break
 
-                assert (worker_assigned_to_shift == True)
+        # update last rest day for workers that didn't work today
+        for employee in employees:
+            if not schedule[day][employee]:
+                last_rest_day[employee] = date
+            else:
+                # reset last rest day for workers that worked today
+                last_rest_day[employee] = month_year.replace(day=1) - timedelta(days=1)
 
     return schedule
 
@@ -124,7 +142,7 @@ max_shifts_per_day=1
 rest_time_between_shifts=12
 rest_days_per_week=1
 employee_availability={'Alice':[datetime(2023,3,5),datetime(2023,3,6)],'Bob':[datetime(2023,3,7)]}
-employee_shift_preference={'Alice':['16h-00h', '00h-08h']}
+employee_shift_preference={'Alice':['16h-00h', '00h-08h'],'Bob':['08h-16h']}
 
 result=schedule(month_year,
              employees,
@@ -140,6 +158,17 @@ for day in result:
     print(f"Day {day}:")
     for employee in result[day]:
         print(f"\t{employee}: {result[day][employee]}")
+
+# generate schedule
+result = schedule(month_year,
+                  employees,
+                  max_hours_per_day,
+                  max_hours_per_week,
+                  max_shifts_per_day,
+                  rest_time_between_shifts,
+                  rest_days_per_week,
+                  employee_availability,
+                  employee_shift_preference)
 
 # export schedule to Excel file
 export_schedule_to_excel(result,'schedule.xlsx')
