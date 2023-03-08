@@ -85,8 +85,8 @@ def schedule(month_year: str,
 
                         if enough_rest_between_shifts == True:
                             # check if worker has taken a rest day since their last shift
-                            if last_shift[worker_name] != '' and last_shift[worker_name] != shift and date <= \
-                                    last_rest_day[worker_name] + timedelta(days=1):
+                            if last_shift[worker_name] != '' and last_shift[worker_name] != shift and date - \
+                                    last_rest_day[worker_name] > timedelta(days=1):
                                 continue
 
                             schedule[day][worker_name].append(shift)
@@ -94,12 +94,13 @@ def schedule(month_year: str,
                             last_shift[worker_name] = shift
                             worker_assigned_to_shift = True
 
+                        if worker_assigned_to_shift == False:
+                            schedule[day]['(External)'].append(shift)
+
                     sorted_employees.pop(worker_index)
 
                     if worker_assigned_to_shift == True:
                         break
-
-                assert (worker_assigned_to_shift == True)
 
         # update last rest day for workers that didn't work today
         for employee in employees:
