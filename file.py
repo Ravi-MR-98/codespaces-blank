@@ -1,7 +1,34 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
+from openpyxl import load_workbook
 import xlsxwriter
 import csv
+
+def import_schedule_from_excel(filename: str):
+    # load workbook and select worksheet
+    workbook = load_workbook('input.xlsx')
+    worksheet = workbook['database']
+
+    # initialize schedule
+    schedule = {}
+
+    # iterate over rows
+    for row in worksheet.iter_rows(min_row=2):
+        # get day from first cell
+        day = row[0].value
+        date = datetime.strptime(day, '%Y-%m-%d')
+
+        # initialize schedule for day
+        schedule[date] = defaultdict(list)
+
+        # iterate over shifts
+        for col, shift in enumerate(['08h-16h', '16h-00h', '00h-08h']):
+            employees = row[col + 1].value.split(', ')
+            for employee in employees:
+                if employee:
+                    schedule[date][employee].append(shift)
+
+    return schedule
 
 def schedule(month_year: str,
              employees: list,
@@ -11,7 +38,8 @@ def schedule(month_year: str,
              rest_time_between_shifts: int,
              rest_days_per_week: int,
              employee_availability: dict,
-             employee_shift_preference: dict):
+             employee_shift_preference: dict,
+             previous_schedule: dict):
     # parse month and year
     month_year = datetime.strptime(month_year, '%m/%Y')
     days_in_month = (month_year.replace(month=month_year.month % 12 + 1) - timedelta(days=1)).day
@@ -36,6 +64,26 @@ def schedule(month_year: str,
     # initialize hours worked per week
     hours_worked_per_week = defaultdict(int)
 
+    # check if previous_schedule is provided and update initial values accordingly
+    if previous_schedule is not None:
+            last_month_last_day = max(previous_schedule.keys())
+            last_month_last_weekday = last_month_last_day.weekday()
+
+            for day in range(last_month_last_day - last_month_last_weekday, last_month_last_day + 1):
+                date = month_year.replace(day=day)
+
+                for worker_name in employees:
+                    worker_schedule = previous_schedule[date][worker_name]
+                    worker_hours_today = sum([8 for shift_time_range_str in worker_schedule])
+
+                    hours_worked_per_week[worker_name] += worker_hours_today
+
+                    if len(worker_schedule) > 0:
+                        last_shift[worker_name] = worker_schedule[-1]
+
+                        if len(worker_schedule) == 0:
+                            last_rest_day[worker_name] = date
+    
     # iterate over days in month
     for day in range(1, days_in_month + 1):
         date = month_year.replace(day=day)
@@ -143,6 +191,7 @@ rest_time_between_shifts=12
 rest_days_per_week=1
 employee_availability={'Alice':[datetime(2023,3,5),datetime(2023,3,6)],'Bob':[datetime(2023,3,7)]}
 employee_shift_preference={'Alice':['16h-00h', '00h-08h'],'Bob':['08h-16h']}
+previous_schedule = None
 
 # generate schedule
 result = schedule(month_year,
@@ -153,7 +202,8 @@ result = schedule(month_year,
                   rest_time_between_shifts,
                   rest_days_per_week,
                   employee_availability,
-                  employee_shift_preference)
+                  employee_shift_preference,
+                  previous_schedule)
 
 # export schedule to Excel file
 export_schedule_to_excel(result,'schedule.xlsx')
