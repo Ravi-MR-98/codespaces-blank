@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from collections import defaultdict
 import xlsxwriter
+import csv
 
 def schedule(month_year: str,
              employees: list,
@@ -109,7 +110,6 @@ def schedule(month_year: str,
             else:
                 # reset last rest day for workers that worked today
                 last_rest_day[employee] = month_year.replace(day=1) - timedelta(days=1)
-
     return schedule
 
 def export_schedule_to_excel(schedule: dict, filename: str):
@@ -143,21 +143,6 @@ rest_time_between_shifts=12
 rest_days_per_week=1
 employee_availability={'Alice':[datetime(2023,3,5),datetime(2023,3,6)],'Bob':[datetime(2023,3,7)]}
 employee_shift_preference={'Alice':['16h-00h', '00h-08h'],'Bob':['08h-16h']}
-
-result=schedule(month_year,
-             employees,
-             max_hours_per_day,
-             max_hours_per_week,
-             max_shifts_per_day,
-             rest_time_between_shifts,
-             rest_days_per_week,
-             employee_availability,
-             employee_shift_preference)
-
-for day in result:
-    print(f"Day {day}:")
-    for employee in result[day]:
-        print(f"\t{employee}: {result[day][employee]}")
 
 # generate schedule
 result = schedule(month_year,
